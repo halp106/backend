@@ -61,6 +61,11 @@ struct Post<'r> {
     content: &'r str,
 }
 
+#[derive(Serialize)]
+struct ThreadsList {
+    threads: Vec<app_logic::Thread>
+}
+
 // Request Guards
 pub struct AuthenticationKey {
     key_content: String,
@@ -176,11 +181,33 @@ fn login(input: Json<LoginInfo<'_>>, db_state: &State<DbState>) -> rocket::serde
     })
 }
 
-#[get("/posts")]
-fn get_posts(authentication_key: AuthenticationKey) -> &'static str {
-    let _ = app_logic::test_db();
+#[get("/threads")]
+fn get_threads(authentication_key: AuthenticationKey, db_state: &State<DbState>) -> Json<ThreadsList> {
+    // Connect to the DB
+    let mut conn = match app_logic::connect_db(&db_state.db_path, db_state.in_memory) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while connecting to the DB to get threads: {}", e);
+            panic!("Panicked while trying to connect to DB to get a list of threads!")
+        }
+    };
 
-    "Implement me!"
+    // Get a vector of threads from the DB
+    let threads = match app_logic::get_threads(&mut conn) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while fetching the vector of threads: {}", e);
+            panic!("Panicked while fetching threads!")
+        }
+    };
+
+    // Create a serializable ThreadsList
+    let threads_list = ThreadsList {
+        threads,
+    };
+
+    // Return as JSON
+    Json(threads_list)
 }
 
 // Launch
@@ -200,5 +227,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(db_state)  // Manage DB state
         .attach(CORS)
-        .mount("/", routes![index, register, login, get_posts])
+        .mount("/", routes![index, register, login, get_threads])
 }

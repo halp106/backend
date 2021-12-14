@@ -3,6 +3,7 @@ use rusqlite::{params, Connection};
 use chrono::{DateTime, Duration, Utc};
 use argon2::{self, Config};
 use rand::{distributions::Alphanumeric, Rng};
+use rocket::serde::{Serialize, Deserialize, json::Json};
 
 // Structures
 #[derive(Debug)]
@@ -17,6 +18,16 @@ struct User {
     email: String,
     password_hash: String,
     registration_datetime: String,
+}
+
+#[derive(Serialize)]
+pub struct Thread {
+    unique_id: isize,
+    title: String,
+    creator_username: String,
+    creation_timestamp: String,
+    tag: String,
+    content: String,
 }
 
 // Testing and Debugging
@@ -273,8 +284,37 @@ pub fn login(conn: &mut Connection, username: &String, password: &String) -> rus
     Ok((authentication_key, expiration_date.to_rfc3339()))
 }
 
-pub fn get_posts(conn: &mut Connection, ) -> rusqlite::Result<String> {
-    todo!("Implement get_posts function")
+pub fn get_threads(conn: &mut Connection) -> rusqlite::Result<Vec<Thread>> {
+
+    // Craft the SQL query
+    let mut threads_query_statement = conn.prepare(
+        "SELECT unique_id, title, creator_uid, creation_timestamp, tag, content FROM threads"
+    )?;
+
+    // Create iterator to iterate through matching DB rows
+    let row_iter = threads_query_statement.query_map([], |row| {
+        Ok(Thread {
+            unique_id: row.get(0)?,
+            title: row.get(1)?,
+            creator_username: row.get(2)?,
+            creation_timestamp: row.get(3)?,
+            tag: row.get(4)?,
+            content: row.get(5)?,
+        })
+    })?;
+
+    // Vector to store thread structs in
+    let mut threads: Vec<Thread> = Vec::new();
+
+    // Iterate through the DB rows
+    for entry in row_iter {
+        let thread = entry?;
+        threads.push(thread);
+        println!("Found row!");
+    }
+
+    // Return the vector of Thread structs
+    Ok(threads)
 }
 
 pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<String> {
