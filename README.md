@@ -1,6 +1,6 @@
 # Halp106 Backend
 
-The backend us just a `cargo run` away! Make sure you have
+The backend is just a `cargo run` away! Make sure you have
 rust installed first.
 
 ## Running with Docker
