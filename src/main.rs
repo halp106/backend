@@ -46,6 +46,13 @@ struct RegisterInfo<'r> {
 }
 
 #[derive(Deserialize)]
+struct NewThread<'r> {
+    title: &'r str,
+    tag: &'r str,
+    content: &'r str,
+}
+
+#[derive(Deserialize)]
 struct LoginInfo<'r> {
     username: &'r str,
     password: &'r str,
@@ -210,6 +217,47 @@ fn get_threads(authentication_key: AuthenticationKey, db_state: &State<DbState>)
     Json(threads_list)
 }
 
+#[post("/thread/create", data="<input>")]
+fn create_thread(input: Json<NewThread<'_>>, authentication_key: AuthenticationKey, db_state: &State<DbState>) -> rocket::serde::json::Value {
+    // Connect to the DB
+    let mut conn = match app_logic::connect_db(&db_state.db_path, db_state.in_memory) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while connecting to the DB to create a thread: {}", e);
+            panic!("Panicked while trying to connect to DB to create a thread!")
+        }
+    };
+
+    // Get the signed-in user
+    let unique_user_id = match app_logic::reverse_key_lookup(&mut conn, &authentication_key.key_content) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while trying to reverse lookup the authentication key: {}", e);
+            panic!("Panicked while trying to reverse lookup the authentication key!")
+        }
+    };
+
+    let username = match app_logic::get_username_from_uid(&mut conn, &unique_user_id) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while trying to lookup the username from a uid: {}", e);
+            panic!("Panicked while trying to lookup the username from a uid!")
+        }
+    };
+
+    // Create the thread using the application logic function
+    let create_result = match app_logic::create_thread(&mut conn, &String::from(input.title), &username, &String::from(input.tag), &String::from(input.content)) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while creating the thread: {}", e);
+            panic!("Panicked while creating the thread!")
+        }
+    };
+
+    // Return success status
+    json!({"success": create_result})
+}
+
 // Launch
 #[launch]
 fn rocket() -> _ {
@@ -227,5 +275,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(db_state)  // Manage DB state
         .attach(CORS)
-        .mount("/", routes![index, register, login, get_threads])
+        .mount("/", routes![index, register, login, get_threads, create_thread])
 }

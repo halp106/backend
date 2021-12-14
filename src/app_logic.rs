@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 use chrono::{DateTime, Duration, Utc};
 use argon2::{self, Config};
 use rand::{distributions::Alphanumeric, Rng};
-use rocket::serde::{Serialize, Deserialize, json::Json};
+use rocket::serde::{Serialize, json::Json};
 
 // Structures
 #[derive(Debug)]
@@ -214,6 +214,102 @@ pub fn authenticate(conn: &mut Connection, auth_key: &String) -> rusqlite::Resul
     Ok(valid_key_encountered)
 }
 
+pub fn reverse_key_lookup(conn: &mut Connection, auth_key: &String) -> rusqlite::Result<String> {
+    // Prepare query in the DB that retrieves all matching authentication keys
+    let mut reverse_key_lookup_query = match conn.prepare("SELECT \
+                        user_id \
+                      FROM \
+                        authentication_keys \
+                      WHERE \
+                        authentication_key = ?1"
+    ) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Error encountered while running query for reverse key lookup: {}", e);
+            panic!("Panicked after not being able to resolve error!")
+        }
+    };
+
+    // Iterate through results to find matching user_id
+    let reverse_key_lookup_results = reverse_key_lookup_query.query_map(params![auth_key], |row| {
+        // Get values from the row as String objects
+        let user_id: isize = row.get(0)?;
+        Ok(user_id.to_string())
+    })?;
+
+    // Actually run iterator to find the matching user_id
+    for entry in reverse_key_lookup_results {
+        return Ok(entry?)
+    }
+
+    // If nothing was found
+    Err(rusqlite::Error::InvalidQuery)
+}
+
+pub fn get_username_from_uid(conn: &mut Connection, unique_id: &String) -> rusqlite::Result<String> {
+    // Prepare query in the DB that retrieves all matching authentication keys
+    let mut matching_usernames_query = match conn.prepare("SELECT \
+                        username \
+                      FROM \
+                        users \
+                      WHERE \
+                        unique_id = ?1"
+    ) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Error encountered while running query for user based on uid: {}", e);
+            panic!("Panicked after not being able to resolve error!")
+        }
+    };
+
+    // Iterate through results to find matching username
+    let matching_username_results = matching_usernames_query.query_map(params![unique_id], |row| {
+        // Get values from the row as String objects
+        let username: String = row.get(0)?;
+        Ok(username)
+    })?;
+
+    // Actually run iterator to find the matching user_id
+    for entry in matching_username_results {
+        return Ok(entry?)
+    }
+
+    // If nothing was found
+    Err(rusqlite::Error::InvalidQuery)
+}
+
+pub fn get_uid_from_username(conn: &mut Connection, username: &String) -> rusqlite::Result<String> {
+    // Prepare query in the DB that retrieves all matching authentication keys
+    let mut matching_uids_query = match conn.prepare("SELECT \
+                        unique_id \
+                      FROM \
+                        users \
+                      WHERE \
+                        username = ?1"
+    ) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Error encountered while running query for username based on username: {}", e);
+            panic!("Panicked after not being able to resolve error!")
+        }
+    };
+
+    // Iterate through results to find matching uid
+    let matching_uid_results = matching_uids_query.query_map(params![username], |row| {
+        // Get values from the row as String objects
+        let uid: isize = row.get(0)?;
+        Ok(uid.to_string())
+    })?;
+
+    // Actually run iterator to find the matching user_id
+    for entry in matching_uid_results {
+        return Ok(entry?)
+    }
+
+    // If nothing was found
+    Err(rusqlite::Error::InvalidQuery)
+}
+
 pub fn login(conn: &mut Connection, username: &String, password: &String) -> rusqlite::Result<(String, String)> {
     // Creates an authentication token for a user given the user's password
 
@@ -348,8 +444,23 @@ pub fn create_user(conn: &mut Connection, username: &String, email: &String, pas
     Ok(true)
 }
 
-pub fn create_post(conn: &mut Connection, title: &String, username: &String, timestamp: &String, tag: &String, content: &String) -> rusqlite::Result<bool> {
-    todo!("Implement create_post function")
+pub fn create_thread(conn: &mut Connection, title: &String, username: &String, tag: &String, content: &String) -> rusqlite::Result<bool> {
+    // Get current time (to be the thread creation timestamp)
+    let now = Utc::now();
+
+    // Get the matching UID that corresponds to the user
+    let unique_user_id = get_uid_from_username(conn, username)?;
+
+    // Create the user in the database
+    conn.execute(
+        "INSERT INTO \
+                threads (title, creator_uid, creation_timestamp, tag, content) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![title, unique_user_id, now.to_rfc3339(), tag, content]
+    )?;
+
+    // If all succeeds, return true
+    Ok(true)
 }
 
 pub fn create_comment(conn: &mut Connection, thread_uid: &String, username: &String, timestamp: &String, content: &String) -> rusqlite::Result<bool> {
