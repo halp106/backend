@@ -221,6 +221,10 @@ pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> Result<S
     todo!("Implement get_post_comments function")
 }
 
+pub fn create_user(conn: &mut Connection, username: &String, email: &String, password: &String) -> Result<bool> {
+    todo!("Implement create_user function")
+}
+
 pub fn create_post(conn: &mut Connection, title: &String, username: &String, timestamp: &String, tag: &String, content: &String) -> Result<bool> {
     todo!("Implement create_post function")
 }
