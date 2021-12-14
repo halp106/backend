@@ -167,7 +167,7 @@ pub fn authenticate(conn: &mut Connection, auth_key: &String) -> rusqlite::Resul
     let mut valid_key_encountered = false;
     let auth_key_results = auth_keys_query.query_map(params![auth_key], |row| {
         // Get values from the row as String objects
-        let expiration: String = row.get(1)?;
+        let expiration: String = row.get(0)?;
 
         // Parse the row values
         let expiration_datetime = match DateTime::parse_from_rfc3339(expiration.as_str()) {
