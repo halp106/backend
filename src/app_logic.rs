@@ -24,7 +24,7 @@ struct User {
 pub struct Thread {
     unique_id: isize,
     title: String,
-    creator_username: String,
+    creator_uid: isize,
     creation_timestamp: String,
     tag: String,
     content: String,
@@ -401,7 +401,7 @@ pub fn get_threads(conn: &mut Connection) -> rusqlite::Result<Vec<Thread>> {
         Ok(Thread {
             unique_id: row.get(0)?,
             title: row.get(1)?,
-            creator_username: row.get(2)?,
+            creator_uid: row.get(2)?,
             creation_timestamp: row.get(3)?,
             tag: row.get(4)?,
             content: row.get(5)?,
