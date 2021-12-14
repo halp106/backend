@@ -73,6 +73,11 @@ struct ThreadsList {
     threads: Vec<app_logic::Thread>
 }
 
+#[derive(Serialize)]
+struct CommentsList {
+    comments: Vec<app_logic::Comment>
+}
+
 // Request Guards
 pub struct AuthenticationKey {
     key_content: String,
@@ -217,6 +222,35 @@ fn get_threads(authentication_key: AuthenticationKey, db_state: &State<DbState>)
     Json(threads_list)
 }
 
+#[get("/threads/<thread_id>/comments")]
+fn get_comments(thread_id: String, authentication_key: AuthenticationKey, db_state: &State<DbState>) -> Json<CommentsList> {
+    // Connect to the DB
+    let mut conn = match app_logic::connect_db(&db_state.db_path, db_state.in_memory) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while connecting to the DB to get comments: {}", e);
+            panic!("Panicked while trying to connect to DB to get a list of comments!")
+        }
+    };
+
+    // Get a vector of Comments from the DB
+    let comments = match app_logic::get_thread_comments(&mut conn, &thread_id) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while fetching the vector of Comments: {}", e);
+            panic!("Panicked while fetching Comments!")
+        }
+    };
+
+    // Create a serializable ThreadsList
+    let comments_list = CommentsList {
+        comments,
+    };
+
+    // Return as JSON
+    Json(comments_list)
+}
+
 #[post("/thread/create", data="<input>")]
 fn create_thread(input: Json<NewThread<'_>>, authentication_key: AuthenticationKey, db_state: &State<DbState>) -> rocket::serde::json::Value {
     // Connect to the DB
@@ -275,5 +309,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(db_state)  // Manage DB state
         .attach(CORS)
-        .mount("/", routes![index, register, login, get_threads, create_thread])
+        .mount("/", routes![index, register, login, get_threads, get_comments, create_thread])
 }

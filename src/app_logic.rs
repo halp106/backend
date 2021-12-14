@@ -30,6 +30,15 @@ pub struct Thread {
     content: String,
 }
 
+#[derive(Serialize)]
+pub struct Comment {
+    unique_id: isize,
+    thread_id: isize,
+    creator_uid: isize,
+    creation_timestamp: String,
+    content: String,
+}
+
 // Testing and Debugging
 pub fn test_db() -> rusqlite::Result<()> {
     let conn = Connection::open_in_memory()?;
@@ -406,15 +415,40 @@ pub fn get_threads(conn: &mut Connection) -> rusqlite::Result<Vec<Thread>> {
     for entry in row_iter {
         let thread = entry?;
         threads.push(thread);
-        println!("Found row!");
     }
 
     // Return the vector of Thread structs
     Ok(threads)
 }
 
-pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<String> {
-    todo!("Implement get_post_comments function")
+pub fn get_thread_comments(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<Vec<Comment>> {
+    // Craft the SQL query
+    let mut comments_query_statement = conn.prepare(
+        "SELECT unique_id, thread_id, creator_uid, creation_timestamp, content FROM comments WHERE thread_id = ?1"
+    )?;
+
+    // Create iterator to iterate through matching DB rows
+    let row_iter = comments_query_statement.query_map(params![thread_uid], |row| {
+        Ok(Comment {
+            unique_id: row.get(0)?,
+            thread_id: row.get(1)?,
+            creator_uid: row.get(2)?,
+            creation_timestamp: row.get(3)?,
+            content: row.get(4)?,
+        })
+    })?;
+
+    // Vector to store comment structs in
+    let mut comments: Vec<Comment> = Vec::new();
+
+    // Iterate through the DB rows
+    for entry in row_iter {
+        let thread = entry?;
+        comments.push(thread);
+    }
+
+    // Return the vector of Comment structs
+    Ok(comments)
 }
 
 pub fn create_user(conn: &mut Connection, username: &String, email: &String, password: &String) -> rusqlite::Result<bool> {
