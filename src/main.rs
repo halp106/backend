@@ -3,13 +3,12 @@ mod app_logic;
 #[macro_use] extern crate rocket;
 
 use rocket::http::Header;
-use rocket::{Request, Response};
+use rocket::{Request, Response, State};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::request::{FromRequest, Outcome};
 use rocket::serde::{Serialize, Deserialize, json::Json};
 use rocket::serde::json::serde_json::json;
 use rocket::http::Status;
-use rusqlite::Connection;
 
 // Set up CORS
 pub struct CORS;
@@ -37,6 +36,13 @@ impl Fairing for CORS {
 struct DbState {
     in_memory: bool,
     db_path: String,
+}
+
+#[derive(Deserialize)]
+struct RegisterInfo<'r> {
+    username: &'r str,
+    email: &'r str,
+    password: &'r str,
 }
 
 #[derive(Deserialize)]
@@ -109,6 +115,41 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
+#[post("/register", data="<input>")]
+fn register(input: Json<RegisterInfo<'_>>, db_state: &State<DbState>) -> rocket::serde::json::Value {
+    // Variable to store whether or not the user registration was successful
+    let mut success = false;
+
+    // Connect to the DB
+    let mut conn = match app_logic::connect_db(&db_state.db_path, db_state.in_memory) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while connecting to the DB to register: {}", e);
+            success = false;
+            panic!("Panicked while trying to connect to DB to register!")
+        }
+    };
+
+    // Create the user
+    success = match app_logic::create_user(
+        &mut conn,
+        &input.username.to_string(),
+        &input.email.to_string(),
+        &input.password.to_string()
+    ) {
+        Ok(_) => true,
+        Err(e) => {
+            println!("Encountered an error while creating the user in the DB: {}", e);
+            false
+        }
+    };
+
+    // Return JSON (if we get this far!)
+    json!({
+        "success": success
+    })
+}
+
 #[post("/login", data="<input>")]
 fn login(input: Json<LoginInfo<'_>>) -> rocket::serde::json::Value {
     // [DEBUG] Print out the username and password received from the user
@@ -147,5 +188,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(db_state)  // Manage DB state
         .attach(CORS)
-        .mount("/", routes![index, login, get_posts])
+        .mount("/", routes![index, register, login, get_posts])
 }

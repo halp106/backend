@@ -1,13 +1,25 @@
 use std::path::Path;
 use rusqlite::{params, Connection, Result};
 use chrono::{DateTime, Utc};
+use argon2::{self, Config};
 
+// Structures
 #[derive(Debug)]
 struct TestEntry {
     id: i32,
     text: String,
 }
 
+struct User {
+    unique_id: isize,
+    username: String,
+    email: String,
+    password_hash: String,
+    password_salt: String,
+    registration_datetime: String,
+}
+
+// Testing and Debugging
 pub fn test_db() -> Result<()> {
     let conn = Connection::open_in_memory()?;
 
@@ -42,6 +54,7 @@ pub fn test_db() -> Result<()> {
     Ok(())
 }
 
+// App Logic Functions
 pub fn connect_db(path: &String, in_memory: bool) -> Result<Connection> {
     // Get path specified in argument as an actual path
     let db_path = Path::new(path);
@@ -222,7 +235,27 @@ pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> Result<S
 }
 
 pub fn create_user(conn: &mut Connection, username: &String, email: &String, password: &String) -> Result<bool> {
-    todo!("Implement create_user function")
+    // Get current time (to be registration datetime)
+    let now = Utc::now();
+
+    // Generate the salt to use
+    // [TODO] Generate REAL random salt instead of hard-coded value
+    let salt = "12345678910";
+    let config = Config::default();
+
+    // Generate the password hash based on the password and the salt
+    let hash = argon2::hash_encoded(password.as_ref(), salt.as_ref(), &config).unwrap();
+
+    // Create the user in the database
+    conn.execute(
+        "INSERT INTO \
+                users (username, email, password_hash, password_salt, registration_datetime) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![username.as_str(), email.as_str(), hash.as_str(), salt, now.to_rfc3339().as_str()]
+    )?;
+
+    // If all succeeds, return true
+    Ok(true)
 }
 
 pub fn create_post(conn: &mut Connection, title: &String, username: &String, timestamp: &String, tag: &String, content: &String) -> Result<bool> {
