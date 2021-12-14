@@ -326,12 +326,15 @@ pub fn create_user(conn: &mut Connection, username: &String, email: &String, pas
     let now = Utc::now();
 
     // Generate the salt to use
-    // [TODO] Generate REAL random salt instead of hard-coded value
-    let salt = "12345678910";
+    let salt: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(10)
+        .map(char::from)
+        .collect();
     let config = Config::default();
 
     // Generate the password hash based on the password and the salt
-    let hash = argon2::hash_encoded(password.as_ref(), salt.as_ref(), &config).unwrap();
+    let hash = argon2::hash_encoded(password.as_ref(), salt.as_str().as_ref(), &config).unwrap();
 
     // Create the user in the database
     conn.execute(
