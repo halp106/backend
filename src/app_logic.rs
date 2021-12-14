@@ -497,8 +497,23 @@ pub fn create_thread(conn: &mut Connection, title: &String, username: &String, t
     Ok(true)
 }
 
-pub fn create_comment(conn: &mut Connection, thread_uid: &String, username: &String, timestamp: &String, content: &String) -> rusqlite::Result<bool> {
-    todo!("Implement create_comment function")
+pub fn create_comment(conn: &mut Connection, thread_uid: &String, username: &String, content: &String) -> rusqlite::Result<bool> {
+    // Get current time (to be the thread creation timestamp)
+    let now = Utc::now();
+
+    // Get the matching UID that corresponds to the user
+    let unique_user_id = get_uid_from_username(conn, username)?;
+
+    // Create the user in the database
+    conn.execute(
+        "INSERT INTO \
+                comments (thread_id, creator_uid, creation_timestamp, content) \
+             VALUES (?1, ?2, ?3, ?4)",
+        params![thread_uid, unique_user_id, now.to_rfc3339(), content]
+    )?;
+
+    // If all succeeds, return true
+    Ok(true)
 }
 
 pub fn delete_thread(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<bool> {
