@@ -151,16 +151,28 @@ fn register(input: Json<RegisterInfo<'_>>, db_state: &State<DbState>) -> rocket:
 }
 
 #[post("/login", data="<input>")]
-fn login(input: Json<LoginInfo<'_>>) -> rocket::serde::json::Value {
-    // [DEBUG] Print out the username and password received from the user
-    println!("Username: {}, Password: {}", input.username, input.password);
+fn login(input: Json<LoginInfo<'_>>, db_state: &State<DbState>) -> rocket::serde::json::Value {
+    // Connect to the DB
+    let mut conn = match app_logic::connect_db(&db_state.db_path, db_state.in_memory) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while connecting to the DB to register: {}", e);
+            panic!("Panicked while trying to connect to DB to log the user in!")
+        }
+    };
 
-    // [TODO] Call authentication function in login request handler
+    let authentication_key = match app_logic::login(&mut conn, &String::from(input.username), &String::from(input.password)) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("Encountered an error while trying to authenticate the user: {}", e);
+            panic!("Panicked while trying to log the user in!")
+        }
+    };
 
     // Return the authentication key for this user
     json!({
-        "auth_key": "IMPLEMENT_ME!",
-        "expiration_datetime": "Never?"
+        "auth_key": authentication_key.0,
+        "expiration_datetime": authentication_key.1
     })
 }
 

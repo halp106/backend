@@ -1,7 +1,8 @@
 use std::path::Path;
-use rusqlite::{params, Connection, Result};
-use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection};
+use chrono::{DateTime, Duration, Utc};
 use argon2::{self, Config};
+use rand::{distributions::Alphanumeric, Rng};
 
 // Structures
 #[derive(Debug)]
@@ -15,12 +16,11 @@ struct User {
     username: String,
     email: String,
     password_hash: String,
-    password_salt: String,
     registration_datetime: String,
 }
 
 // Testing and Debugging
-pub fn test_db() -> Result<()> {
+pub fn test_db() -> rusqlite::Result<()> {
     let conn = Connection::open_in_memory()?;
 
     conn.execute(
@@ -55,7 +55,7 @@ pub fn test_db() -> Result<()> {
 }
 
 // App Logic Functions
-pub fn connect_db(path: &String, in_memory: bool) -> Result<Connection> {
+pub fn connect_db(path: &String, in_memory: bool) -> rusqlite::Result<Connection> {
     // Get path specified in argument as an actual path
     let db_path = Path::new(path);
 
@@ -69,7 +69,7 @@ pub fn connect_db(path: &String, in_memory: bool) -> Result<Connection> {
     Ok(conn)
 }
 
-pub fn setup_database(conn: &mut Connection) -> Result<()> {
+pub fn setup_database(conn: &mut Connection) -> rusqlite::Result<()> {
 
     // Create Users table
     conn.execute(
@@ -135,29 +135,11 @@ pub fn setup_database(conn: &mut Connection) -> Result<()> {
         []
     )?;
 
-    // Create the "root" admin user
-    // todo!("Add correct SQL to create the 'root' admin user");
-    // conn.execute(
-    //     "INSERT INTO users ( \
-    //             username, \
-    //             email, \
-    //             password_hash, \
-    //             password_salt, \
-    //             registration_datetime) \
-    //          VALUES (1?, 2?, 3?, 4?, 5?)",
-    //     params!["..."]
-    // )?;
-    //
-    // conn.execute(
-    //     "INSERT INTO user_privileges (user_id, privilege) VALUES (?1, ?2)",
-    //     params!["..."]
-    // )?;
-
     // Return success if everything completes
     Ok(())
 }
 
-pub fn authenticate(conn: &mut Connection, auth_key: &String) -> Result<bool> {
+pub fn authenticate(conn: &mut Connection, auth_key: &String) -> rusqlite::Result<bool> {
     // Verifies a username and authentication token against the database (and expiration datetime)
 
     // Get the current time
@@ -221,20 +203,85 @@ pub fn authenticate(conn: &mut Connection, auth_key: &String) -> Result<bool> {
     Ok(valid_key_encountered)
 }
 
-pub fn login(conn: &mut Connection, username: &String, password: &String) -> Result<String> {
+pub fn login(conn: &mut Connection, username: &String, password: &String) -> rusqlite::Result<(String, String)> {
     // Creates an authentication token for a user given the user's password
-    todo!("Implement login function")
+
+    // Create statement that finds the desired user
+    let mut user_query_statement = conn.prepare(
+        "SELECT \
+                unique_id, username, email, password_hash, registration_datetime \
+             FROM \
+                users \
+             WHERE \
+                username = ?"
+    )?;
+
+    // Create iterator for results
+    let row_iter = user_query_statement.query_map(params![username], |row| {
+        Ok(User {
+            unique_id: row.get(0)?,
+            username: row.get(1)?,
+            email: row.get(2)?,
+            password_hash: row.get(3)?,
+            registration_datetime: row.get(4)?
+        })
+    })?;
+
+    // Iterate through matching users and verify correct password
+    let mut matching_uid: Option<String> = None;
+    for entry in row_iter {
+        let user = entry?;
+
+        // Check if the password matches
+        let password_valid = match argon2::verify_encoded(&user.password_hash, (&password).as_ref()) {
+            Ok(val) => {
+                matching_uid = Some(user.unique_id.to_string());
+                val
+            },
+            Err(e) => {
+                println!("Encountered an error while attempting to validate password: {}", e);
+                false
+            }
+        };
+    }
+
+    // Create a new authentication key for the user
+    let authentication_key: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+
+    // Generate a new expiration date for the new authentication key
+    let expiration_date = Utc::now() + Duration::days(10);
+
+    // Record the authentication key and the expiration date in the DB
+    match matching_uid {
+        Some(unique_id) => {
+            conn.execute(
+                "INSERT INTO authentication_keys (user_id, authentication_key, expiration) VALUES (?1, ?2, ?3)",
+                params![unique_id, authentication_key, expiration_date.to_rfc3339()]
+            )?;
+        },
+        None => {
+            println!("Tried to authenticate for a user that doesn't exist!");
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+    }
+
+    // Return authentication key and the expiration date
+    Ok((authentication_key, expiration_date.to_rfc3339()))
 }
 
-pub fn get_posts(conn: &mut Connection, ) -> Result<String> {
+pub fn get_posts(conn: &mut Connection, ) -> rusqlite::Result<String> {
     todo!("Implement get_posts function")
 }
 
-pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> Result<String> {
+pub fn get_post_comments(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<String> {
     todo!("Implement get_post_comments function")
 }
 
-pub fn create_user(conn: &mut Connection, username: &String, email: &String, password: &String) -> Result<bool> {
+pub fn create_user(conn: &mut Connection, username: &String, email: &String, password: &String) -> rusqlite::Result<bool> {
     // Get current time (to be registration datetime)
     let now = Utc::now();
 
@@ -258,18 +305,18 @@ pub fn create_user(conn: &mut Connection, username: &String, email: &String, pas
     Ok(true)
 }
 
-pub fn create_post(conn: &mut Connection, title: &String, username: &String, timestamp: &String, tag: &String, content: &String) -> Result<bool> {
+pub fn create_post(conn: &mut Connection, title: &String, username: &String, timestamp: &String, tag: &String, content: &String) -> rusqlite::Result<bool> {
     todo!("Implement create_post function")
 }
 
-pub fn create_comment(conn: &mut Connection, thread_uid: &String, username: &String, timestamp: &String, content: &String) -> Result<bool> {
+pub fn create_comment(conn: &mut Connection, thread_uid: &String, username: &String, timestamp: &String, content: &String) -> rusqlite::Result<bool> {
     todo!("Implement create_comment function")
 }
 
-pub fn delete_thread(conn: &mut Connection, thread_uid: &String) -> Result<bool> {
+pub fn delete_thread(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<bool> {
     todo!("Implement delete_thread function")
 }
 
-pub fn delete_comment(conn: &mut Connection, thread_uid: &String) -> Result<bool> {
+pub fn delete_comment(conn: &mut Connection, thread_uid: &String) -> rusqlite::Result<bool> {
     todo!("Implement delete_comment function")
 }
